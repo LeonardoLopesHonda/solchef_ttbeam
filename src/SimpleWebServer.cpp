@@ -74,18 +74,18 @@ void SimpleWebServer::SetupRoutes() {
             "{\"status\":\"error\",\"msg\":\"Parâmetros ssid e password são obrigatórios\"}");
     } });
 
-    server.on("/dadosSolchef", HTTP_GET, [this]() {
+    server.on("/dadossolchef", HTTP_GET, [this]() {
         String json = dadosRecebidos.ToJSON();
         server.send(200, "application/json", json);
         Serial.println("GET /dadosSolchef -> enviado pacote JSON.");
     });
     
-    server.on("/getMacAddressSender", HTTP_GET, [this]() {
+    server.on("/getmacaddresssender", HTTP_GET, [this]() {
         server.send(200, "text/plain", dadosRecebidos.macAddressSender);
         Serial.println("MAC Address Solchef: " + dadosRecebidos.macAddressSender);
     });
 
-    server.on("/getMacAddressReceiver", HTTP_GET, [this]() {
+    server.on("/getmacaddressreceiver", HTTP_GET, [this]() {
         server.send(200, "text/plain", dadosRecebidos.macAddressReceiver);
         Serial.println("MAC Address Solchef: " + macAddressReceiver);
     });
