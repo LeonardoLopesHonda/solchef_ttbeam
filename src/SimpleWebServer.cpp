@@ -79,7 +79,17 @@ void SimpleWebServer::SetupRoutes() {
         server.send(200, "application/json", json);
         Serial.println("GET /dadosSolchef -> enviado pacote JSON.");
     });
-       
+    
+    server.on("/getMacAddressSender", HTTP_GET, [this]() {
+        server.send(200, "text/plain", dadosRecebidos.macAddressSender);
+        Serial.println("MAC Address Solchef: " + dadosRecebidos.macAddressSender);
+    });
+
+    server.on("/getMacAddressReceiver", HTTP_GET, [this]() {
+        server.send(200, "text/plain", dadosRecebidos.macAddressReceiver);
+        Serial.println("MAC Address Solchef: " + macAddressReceiver);
+    });
+
     server.begin();
     Serial.println("Servidor HTTP iniciado na porta 80.");
 }
