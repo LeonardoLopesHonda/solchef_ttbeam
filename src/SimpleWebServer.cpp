@@ -96,7 +96,7 @@ void SimpleWebServer::SetupRoutes() {
 
 void SimpleWebServer::SendData(const DadosSolchef& DadosSolchef) {
     dadosRecebidos = DadosSolchef;
-    Serial.println("Dados recebidos e atualizados:");
+    Serial.println("Dados recebidos e enviados para webserver:");
     Serial.println(dadosRecebidos.ToJSON());
 }
 

@@ -1,60 +1,135 @@
 #include <Arduino.h>
+#include "Display.hpp"
 #include "WifiManager.hpp"
 #include "SimpleWebServer.hpp"
 #include "DadosSolchef.hpp"
 #include "SensorTemperatura.hpp"
 #include "NvsManager.hpp"
 #include "Gps.hpp"
+#include "LoraService.hpp"
+#include "RabbitMqService.hpp"
 
 // Objetos globais
-WifiManager wifi;
+Display oled(21, 22, 128, 64); // pino SDA, pino SCL, largura, altura
+WifiManager wifiManager;
 SimpleWebServer webServer;
-DadosSolchef dados;
 SensorTemperatura sensorTemperatura(4);
 NvsManager nvsManager;   // ao criar já inicializa a NVS e corrige se necessário
-
+Gps gps(34, 12, 9600);
+LoraService loraService(
+    915E6,   // frequencia LoRa
+    18,      // ss / CS
+    14,      // rst
+    26       // dio0
+);
+RabbitMqService rabbit("http://192.168.100.107:15672", "solchef", "solchef");
 bool apModeAtivo = false;
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("\nIniciando SolChef...");
-  delay(500);
+  oled.Start(); // Inicia o display OLED
+  gps.IniciaGps();
 
+  // Inicia LoRa
+  if (!loraService.Start()) {
+    Serial.println("Erro ao iniciar LoRa.");
+    delay(3000);
+    while (true); // trava para debug
+  }
+
+  // verifica se ja tem wifi cadastrado
   String savedSSID, savedPass;
   bool conectado = false;
 
   if (nvsManager.LerNvsWifi(savedSSID, savedPass)) {
     Serial.println("Credenciais encontradas. Tentando conectar...");
-    conectado = wifi.connect(savedSSID.c_str(), savedPass.c_str(), 10000);
+    conectado = wifiManager.connect(savedSSID.c_str(), savedPass.c_str(), 10000);
 
     if (!conectado) {
       Serial.println("Falha ao conectar → iniciando AP");
-      wifi.startAccessPoint("SolChef_Config", "12345678");
+      wifiManager.startAccessPoint("SolChef_Config", "12345678");
       apModeAtivo = true;
     } else {
       Serial.println("Conectado em Station Mode!");
     }
   } else {
     Serial.println("Nenhuma credencial salva. Iniciando AP...");
-    wifi.startAccessPoint("SolChef_Config", "12345678");
+    wifiManager.startAccessPoint("SolChef_Config", "12345678");
     apModeAtivo = true;
   }
 
   // Sempre inicia o servidor web, independente do modo
   webServer.SetupRoutes();
+  delay(1000); // Aguarda o servidor web iniciar
+  Serial.println("Setup concluido!");
 }
 
 void loop() {
-  // Processa requisições em qualquer modo
-  webServer.HandleClient();
-  dados.tempAgua = random(20, 30) + random(0, 100) / 100.0; // Simula temperatura da água
-  dados.tempInterna = random(20, 30) + random(0, 100) / 100.0; // Simula temperatura interna
-  dados.latitude = 37.7749; // Simula latitude
-  dados.longitude = -122.4194; // Simula longitude
-  dados.macAddressSender = wifi.getMeuMacAddress().c_str();;
+/* 
+  webServer.HandleClient();  // Mantem o servidor HTTP responsivo
+  Serial.println("Aguardando dados LoRa...");
+  String payload;
+
+  if (loraService.ReceberDados(payload)) {
+
+    // Tenta desserializar
+    if (dados.FromJson(payload)) {
+      
+      // Exibe JSON no Serial
+      Serial.println("Dados desserializados:");
+      Serial.println(dados.ToJSON());
+      
+      dados.macAddressReceiver = wifiManager.getMeuMacAddress().c_str();
+
+      // Exibe dados no display OLED
+      oled.Clear();
+      oled.PrintLine(0, ("IP: " + wifiManager.getIPAddress()).c_str());
+      oled.PrintLine(1, ("Ag: " + String(dados.tempAgua) + " Int: " + String(dados.tempInterna)).c_str());
+      oled.PrintLine(2, ("Date: " + String(dados.horaRegistro)).c_str());
+      oled.PrintLine(3, ("GPS: " + String(dados.latitude) + " | " + String(dados.longitude)).c_str());
+
+      webServer.SendData(dados);
+      rabbit.PublishToQueue(dados);
+    } 
+    else 
+    {
+      // Payload invÃ¡lido (formato incorreto)
+      Serial.println("Payload invÃ¡lido:");
+      Serial.println(payload);
+    }
+    delay(2000);  // Aguarda 02 segundos antes de receber novamente
+  }*/
+  
+  gps.SincronizaGps();
+  webServer.HandleClient();  // Mantem o servidor HTTP responsivo
+
+  // Criar objeto de dados simulados
+  DadosSolchef dados;
+  dados.tempAgua = sensorTemperatura.GetTemperaturaAgua();    
+  dados.tempInterna = sensorTemperatura.GetTemperaturaInterna(); 
+
+  if (gps.TemFix())
+  {
+    dados.latitude = gps.GetLatitude(); // usa TinyGPSPlus
+    dados.longitude = gps.GetLongitude();
+  }
+  else
+  {
+    dados.latitude = 0.0;
+    dados.longitude = 0.0;
+  }
+
+  char bufferHora[6];
+  snprintf(bufferHora, sizeof(bufferHora), "%02d:%02d", gps.GetHora().toInt());
+  dados.horaRegistro = String(bufferHora);
+  dados.macAddressSender = wifiManager.getMeuMacAddress().c_str();
+
+  // Serializa e envia via LoRa
+  //loraService.EnviaDados(dados);
+  //Serial.println("Payload enviado:");
+  //gps.ImprimirDadosGps();
   webServer.SendData(dados);
-
-  delay(2000);
+  rabbit.PublishToQueue(dados);
+  delay(5000);
 }
-
 
