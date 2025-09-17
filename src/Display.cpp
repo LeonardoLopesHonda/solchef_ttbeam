@@ -1,6 +1,6 @@
 #include "Display.hpp"
 
-Display::Display(int sdaPin, int sclPin, int screenWidth, int screenHeight)
+Display::Display(int sdaPin, int sclPin, int OLED_RESET, int screenWidth, int screenHeight)
     : display(screenWidth, screenHeight, &Wire, OLED_RESET), 
       sdaPin(sdaPin), sclPin(sclPin) {}
 

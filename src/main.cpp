@@ -2,7 +2,7 @@
 #include "Display.hpp"
 
 // Objetos globais
-Display oled(17, 18, 128, 64); // pino SDA, pino SCL, largura, altura
+Display oled(17, 18, 21, 128, 64); // pino SDA, pino SCL, OLED_RESET, largura, altura
 
 int i = 0;
 
