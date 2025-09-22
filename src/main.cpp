@@ -1,11 +1,13 @@
 #include <Arduino.h>
 #include "Display.hpp"
 #include "WifiManager.hpp"
+#include "NvsManager.hpp"
 
 // Objetos globais
 Display oled(17, 18, 21, 128, 64); // pino SDA, pino SCL, OLED_RESET, largura, altura
 WifiManager wifiManager;
 bool apMode = false;
+NvsManager nvsManager;
 
 int i = 0;
 
@@ -15,25 +17,24 @@ void setup() {
   String savedSSID, savedPass;
   bool connected = false;
 
-  connected = wifiManager.connect(savedSSID.c_str(), savedPass.c_str(), 10000);
-
-  oled.Start(); // Inicia o display OLED
-
-  oled.PrintLine(1, ("Connecting..."));
-  delay(2500);
-
-  if(!connected) {
-    Serial.println("Falha ao conectar -> iniciando AP");
+  if(nvsManager.LerNvsWifi(savedSSID, savedPass)) {
+    Serial.println("Credenciais encontradas. Tentando conectar...");
+    connected = wifiManager.connect(savedSSID.c_str(), savedPass.c_str(), 10000);
+    
+    if(!connected) {
+      Serial.println("Falha ao conectar -> iniciando AP");
+      wifiManager.startAccessPoint("SolChef_Config", "solchef12345");
+      apMode = true;
+    } else {
+      Serial.println("Conectado em Station Mode!");
+    }
+  } else {
+    Serial.println("Nenhuma credencial salva. Iniciando AP...");
     wifiManager.startAccessPoint("SolChef_Config", "solchef12345");
     apMode = true;
-    oled.PrintLine(1, ("Initializing AP Mode..."));
-    delay(2000);
-  } else {
-    Serial.println("Conectado em Station Mode!");
-    oled.PrintLine(1, ("Connecting in Station Mode..."));
-    delay(1000);
   }
-
+  
+  oled.Start(); // Inicia o display OLED
   oled.Clear();
   oled.PrintLine(1, ("SolChef | LoRa"));
   oled.PrintLine(2, ("Receptor - Monitor"));
