@@ -62,5 +62,5 @@ void loop() {
   webServer.SendData(dados);
 
   i++;
-  delay(5000); 
+  delay(1000); 
 }

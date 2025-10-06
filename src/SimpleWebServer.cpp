@@ -217,35 +217,38 @@ void SimpleWebServer::SetupRoutes() {
 
   server.on("/scan", HTTP_GET, [this]() {
     int n = WiFi.scanNetworks();
-    StaticJsonDocument<512> doc;
+    StaticJsonDocument<1024> doc;
     JsonArray arr = doc.createNestedArray("networks");
 
     std::vector<String> seen;
 
     for(int i = 0; i < n; i++) {
       String ssid = WiFi.SSID(i);
-      if(ssid.length() == 0) continue;
-      bool duplicate = false;
+      if(ssid.isEmpty()) continue;
 
+      bool duplicate = false;
       for(auto &s : seen) {
         if(s == ssid) {
           duplicate = true;
           break;
         }
       }
+
+      if(duplicate) continue;
       
-      if(!duplicate) {
-        seen.push_back(ssid);
-        JsonObject net = arr.createNestedObject();
-        net["ssid"] = WiFi.SSID();
-        net["rssi"] = WiFi.RSSI();
-        net["secure"] = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
-      }
+      seen.push_back(ssid);
+
+      JsonObject net = arr.createNestedObject();
+      net["ssid"] = ssid;
+      net["rssi"] = WiFi.RSSI(i);
+      net["secure"] = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
     }
 
     String out;
     serializeJson(doc, out);
     server.send(200, "application/json", out);
+
+    WiFi.scanDelete();
   });
 
   server.on("/solchef", HTTP_GET, [this]() {
@@ -376,6 +379,22 @@ void SimpleWebServer::SetupRoutes() {
               background-color: rgba(0, 71, 171, 1);
               color: white;
             }
+
+            .spinner {
+              display: inline-block;
+              width: 14px;
+              height: 14px;
+              border: 2px solid #ccc;
+              border-top: 2px solid #333;
+              border-radius: 50%;
+              animation: spin 0.8s linear infinite;
+              vertical-align: middle;
+              margin-left: 6px;
+            }
+
+            @keyframes spin {
+              to { transform: rotate(360deg); }
+            }            
           </style>
         </head>
         <body>
@@ -427,6 +446,12 @@ void SimpleWebServer::SetupRoutes() {
               <hr>
               <section>
                 <h2>Wi-Fi Configuration</h2>
+
+                <div class="flex-row items-center gap-sm">
+                  <button id="scanBtn" type="button">🔍 Rescan Networks</button>
+                  <span id="scanStatus" style="margin-left:10px; color:gray;">Idle</span>
+                </div>
+
                 <form id="wifiForm">
                   <label for="ssid">SSID:</label>
                   <input list="networks" id="ssid" name="ssid" required />
@@ -443,25 +468,44 @@ void SimpleWebServer::SetupRoutes() {
           </div>
           <script>
             async function loadNetworks() {
+              const status = document.getElementById("scanStatus");
+              const list = document.getElementById("networks");
+              const btn = document.getElementById("scanBtn");
+
               try {
-                const res = await fetch("/scan");
-                const data = await res.json();
-                const list = document.getElementById("networks");
+                status.innerHTML = 'Scanning... <span class="spinner"></span>';
+                btn.disabled = true;
                 list.innerHTML = "";
 
-                // Treat / sanitize data: remove duplicates and empty SSIDs
-                const uniqueSSIDs = [...new Set(data.networks
-                  .map(net => net.ssid.trim())
-                  .filter(ssid => ssid.length > 0)
+                const res = await fetch("/scan");
+                if (!res.ok) throw new Error("HTTP " + res.status);
+
+                const data = await res.json();
+
+                // Deduplicate and clean SSIDs
+                const uniqueSSIDs = [...new Set(
+                  data.networks
+                    .map(net => net.ssid.trim())
+                    .filter(ssid => ssid.length > 0)
                 )];
+
+                if (uniqueSSIDs.length === 0) {
+                  status.textContent = "No networks found";
+                  return;
+                }
 
                 uniqueSSIDs.forEach(ssid => {
                   const opt = document.createElement("option");
                   opt.value = ssid;
                   list.appendChild(opt);
                 });
+
+                status.textContent = `Found ${uniqueSSIDs.length} networks`;
               } catch (err) {
                 console.error("Failed to load networks:", err);
+                status.textContent = "Scan failed";
+              } finally {
+                btn.disabled = false;
               }
             }
 
@@ -516,6 +560,8 @@ void SimpleWebServer::SetupRoutes() {
                 msg.textContent = "Error sending credentials.";
               }
             });
+
+            document.getElementById("scanBtn").addEventListener("click", loadNetworks);
 
             // Initial loads
             loadNetworks();
